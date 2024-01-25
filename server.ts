@@ -169,16 +169,17 @@ io.on('connection', (socket) => {
   socket.on('play-card', ({roomName, sentCard, direction}) => {
     const player = players.length!==0?players.find((player) => player.getSocketID() === socket.id):undefined
     const room = rooms.length!==0?rooms.find((room) => room.getName() === roomName):undefined
-    if (player !== undefined && room !== undefined && room.getPlayers().includes(player)) {
+    if (player !== undefined && room !== undefined && room.getPlayers().includes(player) && !room.getField().includes(sentCard)) {
       room.addCardToField(sentCard, player, direction)
       room.rotateTurn()
+      const newBlockedGame = room.getBlockedGame()
       const newTurn = room.getTurn()
       const newField = room.getField()
       const len = room.getPlayers().length
       for (let i = 0; i < len; i++) {
-        socket.to(room.getPlayers()[i].getSocketID()).emit('play-card', ({sentCard, newTurn, newField}))
+        socket.to(room.getPlayers()[i].getSocketID()).emit('play-card', ({sentCard, newTurn, newField, newBlockedGame}))
       }
-      socket.emit('play-card', ({sentCard, newTurn, newField}))
+      socket.emit('play-card', ({sentCard, newTurn, newField, newBlockedGame}))
     }
   })
 
@@ -187,6 +188,19 @@ io.on('connection', (socket) => {
     const room = rooms.length!==0?rooms.find((room) => room.getName() === roomName):undefined
     if (player !== undefined && room !== undefined && room.getPlayers().includes(player)) {
       socket.emit('get-scores', (room.getScores()))
+      setTimeout(() => {
+        if (room.getScores().includes(150)) {
+          room.endGame()
+          const newHands = room.getHands()
+          const newGameStarted = room.getGameStarted()
+          const newGameNumber = room.getGameNumber()
+          const newTurn = room.getTurn()
+          const newScores = room.getScores()
+          const newPhase = room.getPhase()
+          const newSeats = room.getSeats()
+          socket.emit('game-ended', ({newHands, newGameStarted, newGameNumber, newTurn, newScores, newPhase, newSeats}))
+        }
+      }, 2000)
     }
   })
 })
@@ -210,10 +224,10 @@ const removePlayerFromRoom = (socket: Socket) => {
             const newTurn = rooms[i].getTurn()
             const newScores = rooms[i].getScores()
             const newPhase = rooms[i].getPhase()
-            
+            const newSeats = rooms[i].getSeats()
             const len = rooms[i].getPlayers().length
             for (let k = 0; k < len; k++) {
-              socket.to(rooms[i].getPlayers()[k].getSocketID()).emit('game-ended', {newHands, newGameStarted, newGameNumber, newTurn, newScores, newPhase})
+              socket.to(rooms[i].getPlayers()[k].getSocketID()).emit('game-ended', {newHands, newGameStarted, newGameNumber, newTurn, newScores, newPhase, newSeats})
             }
           }
         }
@@ -253,7 +267,7 @@ const modifyHands = (player: Player, room: Room): {[key: string]: string[]} => {
   const newHands: {[key: string]: string[]} = {}
   const len = room.getPlayers().length
   for (let i = 0; i < len; i++) {
-    if (room.getSeats()[i] !== player.getNickname())
+    if (room.getSeats()[i] !== player?.getNickname())
       newHands[room.getSeats()[i]]!==undefined?newHands[room.getSeats()[i]]=Array(newHands[room.getSeats()[i]].length).fill('facedown'):newHands[room.getSeats()[i]]=Array(7).fill('facedown')
     else
       newHands[room.getSeats()[i]] = room.getHands()[room.getSeats()[i]]
